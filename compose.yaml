@@ -1,3 +1,9 @@
+---
+# Bug fixes applied:
+# 1. POSTGRES_USER changed from 'admin' to 'airflow' to match SQL_ALCHEMY_CONN credentials
+# 2. Webserver healthcheck URL fixed from 'localhost:xxxx' to 'localhost:8080'
+# 3. Volume mount fixed from './dag' to './dags' to match actual repo folder name
+
 x-airflow-common:
   &airflow-common
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.5.1}
@@ -11,10 +17,10 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
   volumes:
-    - ./dag:/opt/airflow/dags
+    - ./dags:/opt/airflow/dags         # FIX #3: was './dag' (missing 's')
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
-  user: "5000"
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
     redis:
@@ -28,7 +34,7 @@ services:
     ports:
       - 5432:5432
     environment:
-      POSTGRES_USER: admin
+      POSTGRES_USER: airflow       # FIX #1: was 'admin', must match SQL_ALCHEMY_CONN
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
@@ -56,7 +62,7 @@ services:
     ports:
       - 8080:8080
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:xxxx/health"]
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]  # FIX #2: was 'localhost:xxxx'
       interval: 10s
       timeout: 10s
       retries: 5
@@ -120,14 +126,14 @@ services:
       - -c
       - |
         mkdir -p /sources/logs /sources/dags /sources/plugins
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        chown -R "${AIRFLOW_UID:-50000}:0" /sources/{logs,dags,plugins}
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_UPGRADE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: airflow
-      _AIRFLOW_WWW_USER_PASSWORD: airflow
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
     volumes:
